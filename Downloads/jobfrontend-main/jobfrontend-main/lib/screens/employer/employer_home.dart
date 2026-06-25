@@ -49,27 +49,34 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(
-                  icon: Icons.dashboard_rounded,
-                  label: 'Dashboard',
-                  index: 0,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.dashboard_rounded,
+                    label: 'Dashboard',
+                    index: 0,
+                  ),
                 ),
-                _buildNavItem(
-                  icon: Icons.people_alt_rounded,
-                  label: 'Applicants',
-                  index: 1,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.people_alt_rounded,
+                    label: 'Applicants',
+                    index: 1,
+                  ),
                 ),
-                _buildNavItem(
-                  icon: Icons.card_membership_rounded,
-                  label: 'Subscriptions',
-                  index: 2,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.card_membership_rounded,
+                    label: 'Subscriptions',
+                    index: 2,
+                  ),
                 ),
-                _buildNavItem(
-                  icon: Icons.business_rounded,
-                  label: 'Company',
-                  index: 3,
+                Expanded(
+                  child: _buildNavItem(
+                    icon: Icons.business_rounded,
+                    label: 'Company',
+                    index: 3,
+                  ),
                 ),
               ],
             ),
@@ -152,7 +159,7 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(
-          horizontal: isSelected ? 20 : 16,
+          horizontal: isSelected ? 12 : 8,
           vertical: 10,
         ),
         decoration: BoxDecoration(
@@ -162,7 +169,8 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.max,
           children: [
             Icon(
               icon,
@@ -171,12 +179,16 @@ class _EmployerHomeScreenState extends State<EmployerHomeScreen> {
             ),
             if (isSelected) ...[
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ],

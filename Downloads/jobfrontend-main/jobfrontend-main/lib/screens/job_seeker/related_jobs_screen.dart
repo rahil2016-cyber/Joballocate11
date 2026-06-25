@@ -30,13 +30,33 @@ class _RelatedJobsScreenState extends State<RelatedJobsScreen> {
   String? _loadError;
 
   final JobSeekerApiService _api = JobSeekerApiService.instance;
+  final ScrollController _scrollController = ScrollController();
+  int _currentPage = 1;
+  bool _hasMore = true;
+  bool _isFetchingMore = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _load();
     _refreshAppliedIds();
     _loadSavedJobIds();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 200) {
+      _loadMore();
+    }
   }
 
   Future<void> _load() async {
@@ -53,13 +73,19 @@ class _RelatedJobsScreenState extends State<RelatedJobsScreen> {
     setState(() {
       _isLoading = true;
       _loadError = null;
+      _currentPage = 1;
+      _hasMore = true;
+      _isFetchingMore = false;
     });
     try {
-      final jobs = await _api.getRelatedJobs(perPage: 80);
+      final jobs = await _api.getRelatedJobs(page: 1, perPage: 15);
       if (mounted) {
         setState(() {
           _jobs = jobs;
           _isLoading = false;
+          if (jobs.length < 15) {
+            _hasMore = false;
+          }
         });
       }
     } catch (e) {
@@ -67,6 +93,37 @@ class _RelatedJobsScreenState extends State<RelatedJobsScreen> {
         setState(() {
           _loadError = e.toString();
           _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isFetchingMore || !_hasMore || _isLoading) return;
+    setState(() {
+      _isFetchingMore = true;
+    });
+    try {
+      final nextPage = _currentPage + 1;
+      final jobs = await _api.getRelatedJobs(page: nextPage, perPage: 15);
+      if (mounted) {
+        setState(() {
+          if (jobs.isEmpty) {
+            _hasMore = false;
+          } else {
+            _jobs.addAll(jobs);
+            _currentPage = nextPage;
+            if (jobs.length < 15) {
+              _hasMore = false;
+            }
+          }
+          _isFetchingMore = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isFetchingMore = false;
         });
       }
     }
@@ -250,9 +307,19 @@ class _RelatedJobsScreenState extends State<RelatedJobsScreen> {
     }
 
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _jobs.length,
+      itemCount: _jobs.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
+        if (index == _jobs.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+            ),
+          );
+        }
+
         final job = _jobs[index];
         final isSaved = _savedJobIds.contains(job.id);
         return JobCardWidget(

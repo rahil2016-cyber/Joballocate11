@@ -34,10 +34,15 @@ class ApiConfig {
     if (_initialized) return;
     _initialized = true;
 
-    // Force connection to the live production server as requested
-    _resolved = liveProductionBase;
-    resolutionSource = 'live';
-    debugPrint('[ApiConfig] Forced live production API → $liveProductionBase');
+    if (_fromEnv.isNotEmpty) {
+      _resolved = _normalizeBase(_fromEnv);
+      resolutionSource = 'env';
+      debugPrint('[ApiConfig] Using custom environment API → $_resolved');
+    } else {
+      _resolved = liveProductionBase;
+      resolutionSource = 'live';
+      debugPrint('[ApiConfig] Forced live production API → $liveProductionBase');
+    }
   }
 
   static String _normalizeBase(String u) =>
@@ -45,6 +50,6 @@ class ApiConfig {
 
   /// Resolved after [initialize]. Before init, prefers dart-define then production.
   static String get baseUrl {
-    return liveProductionBase;
+    return _resolved ?? liveProductionBase;
   }
 }

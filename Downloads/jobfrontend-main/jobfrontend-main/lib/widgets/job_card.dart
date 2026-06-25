@@ -34,21 +34,22 @@ class JobCardWidget extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -60,11 +61,11 @@ class JobCardWidget extends StatelessWidget {
                   children: [
                     // Company Avatar
                     Container(
-                      width: 48,
-                      height: 48,
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: const Color(0xFFF1F5F9)),
                       ),
                       clipBehavior: Clip.antiAlias,
@@ -72,8 +73,8 @@ class JobCardWidget extends StatelessWidget {
                           ? CachedNetworkImage(
                               imageUrl: job.companyLogoUrl!,
                               fit: BoxFit.contain,
-                              width: 48,
-                              height: 48,
+                              width: 52,
+                              height: 52,
                               placeholder: (context, url) => const Center(
                                 child: SizedBox(
                                   width: 20,
@@ -209,15 +210,19 @@ class JobCardWidget extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppColors.accentLight,
-                          borderRadius: BorderRadius.circular(8),
+                          color: AppColors.primary.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.primary.withOpacity(0.12),
+                            width: 1,
+                          ),
                         ),
                         child: Text(
                           skill,
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.accent,
+                            color: AppColors.primary,
                           ),
                         ),
                       );
@@ -229,20 +234,20 @@ class JobCardWidget extends StatelessWidget {
                 // Bottom: Experience + stats + Apply (Wrap avoids horizontal overflow)
                 Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 10,
+                  spacing: 12,
                   runSpacing: 10,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
+                          horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(6),
+                        color: AppColors.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         job.experienceDisplay.toUpperCase(),
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w800,
                           color: AppColors.primary,
                           letterSpacing: 0.5,
@@ -253,12 +258,12 @@ class JobCardWidget extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.visibility_outlined,
-                            size: 14, color: AppColors.textPrimary),
+                            size: 14, color: AppColors.textSecondary),
                         const SizedBox(width: 4),
                         Text(
                           '${job.viewsCount}',
                           style: textTheme.bodySmall?.copyWith(
-                            color: AppColors.textPrimary,
+                            color: AppColors.textSecondary,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -268,12 +273,12 @@ class JobCardWidget extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.people_outline_rounded,
-                            size: 14, color: AppColors.textPrimary),
+                            size: 14, color: AppColors.textSecondary),
                         const SizedBox(width: 4),
                         Text(
                           '${job.applicationsCount} applied',
                           style: textTheme.bodySmall?.copyWith(
-                            color: AppColors.textPrimary,
+                            color: AppColors.textSecondary,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -316,16 +321,17 @@ class JobCardWidget extends StatelessWidget {
                             foregroundColor: Colors.white,
                             elevation: 0,
                             minimumSize: const Size(0, 0),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: 22),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: const Text(
                             'Apply',
                             style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3,
                             ),
                           ),
                         ),
@@ -344,20 +350,27 @@ class JobCardWidget extends StatelessWidget {
     required IconData icon,
     required String label,
   }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: AppColors.primary),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.primary),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

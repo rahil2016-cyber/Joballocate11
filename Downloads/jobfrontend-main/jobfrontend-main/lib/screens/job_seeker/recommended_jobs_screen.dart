@@ -29,13 +29,33 @@ class _RecommendedJobsScreenState extends State<RecommendedJobsScreen> {
   String? _loadError;
 
   final JobSeekerApiService _apiService = JobSeekerApiService.instance;
+  final ScrollController _scrollController = ScrollController();
+  int _currentPage = 1;
+  bool _hasMore = true;
+  bool _isFetchingMore = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadRecommendedJobs();
     _refreshAppliedIds();
     _loadSavedJobIds();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 200) {
+      _loadMoreRecommendedJobs();
+    }
   }
 
   Future<void> _loadRecommendedJobs() async {
@@ -53,12 +73,18 @@ class _RecommendedJobsScreenState extends State<RecommendedJobsScreen> {
       setState(() {
         _isLoading = true;
         _loadError = null;
+        _currentPage = 1;
+        _hasMore = true;
+        _isFetchingMore = false;
       });
-      final jobs = await _apiService.getRecommendedJobs();
+      final jobs = await _apiService.getRecommendedJobs(page: 1, perPage: 15);
       if (mounted) {
         setState(() {
           _recommendedJobs = jobs;
           _isLoading = false;
+          if (jobs.length < 15) {
+            _hasMore = false;
+          }
         });
       }
     } catch (e) {
@@ -66,6 +92,37 @@ class _RecommendedJobsScreenState extends State<RecommendedJobsScreen> {
         setState(() {
           _loadError = e.toString();
           _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoreRecommendedJobs() async {
+    if (_isFetchingMore || !_hasMore || _isLoading) return;
+    setState(() {
+      _isFetchingMore = true;
+    });
+    try {
+      final nextPage = _currentPage + 1;
+      final jobs = await _apiService.getRecommendedJobs(page: nextPage, perPage: 15);
+      if (mounted) {
+        setState(() {
+          if (jobs.isEmpty) {
+            _hasMore = false;
+          } else {
+            _recommendedJobs.addAll(jobs);
+            _currentPage = nextPage;
+            if (jobs.length < 15) {
+              _hasMore = false;
+            }
+          }
+          _isFetchingMore = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isFetchingMore = false;
         });
       }
     }
@@ -274,9 +331,19 @@ class _RecommendedJobsScreenState extends State<RecommendedJobsScreen> {
     }
 
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _recommendedJobs.length,
+      itemCount: _recommendedJobs.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
+        if (index == _recommendedJobs.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+            ),
+          );
+        }
+
         final job = _recommendedJobs[index];
         final isSaved = _savedJobIds.contains(job.id);
         return JobCardWidget(

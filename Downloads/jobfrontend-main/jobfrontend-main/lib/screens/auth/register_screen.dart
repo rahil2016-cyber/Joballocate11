@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/api_service.dart';
 import '../../services/app_session.dart';
 import '../../services/location_service.dart';
@@ -48,6 +50,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   final TextEditingController _adminNameController = TextEditingController();
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _companyEmailController = TextEditingController();
+  final TextEditingController _companyPhoneController = TextEditingController();
   final TextEditingController _industryController = TextEditingController();
   final TextEditingController _websiteController = TextEditingController();
   final TextEditingController _companyCityController = TextEditingController();
@@ -61,6 +64,13 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   final TextEditingController _confirmPasswordController = TextEditingController();
 
   final ApiService _apiService = ApiService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  String? _verificationId;
+  int? _resendToken;
+  int _secondsRemaining = 60;
+  Timer? _timer;
+
   bool _referralValidating = false;
   bool? _referralValid;
   String? _referralMessage;
@@ -76,6 +86,21 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   bool get _isJobSeeker => widget.showJobSeeker;
   bool get _isCompany => !widget.showJobSeeker && _tabController.index == 0;
   bool get _isConsultancy => !widget.showJobSeeker && _tabController.index == 1;
+
+  void _startResendTimer() {
+    _secondsRemaining = 60;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
+        } else {
+          _timer?.cancel();
+        }
+      });
+    });
+  }
 
   @override
   void initState() {
@@ -104,6 +129,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     _adminNameController.dispose();
     _companyNameController.dispose();
     _companyEmailController.dispose();
+    _companyPhoneController.dispose();
     _industryController.dispose();
     _websiteController.dispose();
     _companyCityController.dispose();
@@ -113,6 +139,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     _referralCodeController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -323,17 +350,15 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           ),
         ),
         const SizedBox(height: 18),
-        _label('How should we reach you?', textTheme),
+        _label('Phone number', textTheme),
         const SizedBox(height: 8),
-        _phoneEmailToggle(),
-        const SizedBox(height: 12),
         TextField(
           controller: _seekerContactController,
-          keyboardType: _isPhone ? TextInputType.phone : TextInputType.emailAddress,
-          decoration: InputDecoration(
-            hintText: _isPhone ? '+91 98765 43210' : 'you@email.com',
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            hintText: '+91 98765 43210',
             prefixIcon: Icon(
-              _isPhone ? Icons.phone_iphone_rounded : Icons.alternate_email_rounded,
+              Icons.phone_iphone_rounded,
               color: AppColors.primary,
             ),
           ),
@@ -474,6 +499,20 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           decoration: const InputDecoration(
             hintText: 'hr@company.com',
             prefixIcon: Icon(Icons.alternate_email_rounded, color: AppColors.accent),
+          ),
+        ),
+        const SizedBox(height: 18),
+        _label('Business phone number', textTheme),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _companyPhoneController,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            hintText: '+91 98765 43210',
+            prefixIcon: Icon(
+              Icons.phone_iphone_rounded,
+              color: AppColors.accent,
+            ),
           ),
         ),
         const SizedBox(height: 18),
@@ -768,22 +807,18 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   Widget _buildOtpStep(TextTheme textTheme, double hPad) {
     final contact = _isJobSeeker
         ? _seekerContactController.text.trim()
-        : _companyEmailController.text.trim();
+        : _companyPhoneController.text.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _isJobSeeker
-              ? 'Code sent to ${_isPhone ? 'phone' : 'email'}'
-              : 'Code sent to $contact',
+          'Code sent to phone $contact',
           style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 20),
         Text(
-          ApiService.demoMode
-              ? 'Enter the 6-digit code (demo: ${ApiService.demoOtp}).'
-              : 'Enter the 6-digit verification code.',
+          'Enter the 6-digit verification code.',
           style: textTheme.bodyMedium,
         ),
         const SizedBox(height: 20),
@@ -800,18 +835,23 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           isLoading: _isLoading,
           backgroundColor: _isJobSeeker ? AppColors.primary : AppColors.accent,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         Center(
-          child: TextButton(
-            onPressed: _isLoading ? null : _sendRegistrationOtp,
-            child: Text(
-              'Resend code',
-              style: TextStyle(
-                color: _isJobSeeker ? AppColors.primary : AppColors.accent,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          child: _secondsRemaining > 0
+              ? Text(
+                  'Resend code in $_secondsRemaining seconds',
+                  style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                )
+              : TextButton(
+                  onPressed: _isLoading ? null : _sendRegistrationOtp,
+                  child: Text(
+                    'Resend Code',
+                    style: TextStyle(
+                      color: _isJobSeeker ? AppColors.primary : AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
         ),
       ],
     );
@@ -916,8 +956,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         );
       }
     } catch (e) {
-      setState(() => _isLoading = false);
-      _snack(ApiService.messageFromException(e));
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _snack(ApiService.messageFromException(e));
+      }
     }
   }
 
@@ -925,8 +967,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     return Column(
       children: [
         const Divider(height: 32),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
           children: [
             Text('Already registered? ', style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
             TextButton(
@@ -966,20 +1010,13 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     }
     final c = _seekerContactController.text.trim();
     if (c.isEmpty) {
-      _snack('Please enter phone or email');
+      _snack('Please enter your phone number');
       return false;
     }
-    if (!_isPhone) {
-      if (!c.contains('@') || c.length < 5) {
-        _snack('Please enter a valid email');
-        return false;
-      }
-    } else {
-      final digits = RegExp(r'\d').allMatches(c).length;
-      if (digits < 10) {
-        _snack('Please enter a valid phone number');
-        return false;
-      }
+    final digits = RegExp(r'\d').allMatches(c).length;
+    if (digits < 10) {
+      _snack('Please enter a valid phone number');
+      return false;
     }
     return true;
   }
@@ -1006,6 +1043,16 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       _snack('Please enter a valid business email');
       return false;
     }
+    final phone = _companyPhoneController.text.trim();
+    if (phone.isEmpty) {
+      _snack('Please enter your phone number');
+      return false;
+    }
+    final digits = RegExp(r'\d').allMatches(phone).length;
+    if (digits < 10) {
+      _snack('Please enter a valid phone number');
+      return false;
+    }
     return true;
   }
 
@@ -1018,45 +1065,83 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       }
     }
 
+    String phone = _isJobSeeker
+        ? _seekerContactController.text.trim()
+        : _companyPhoneController.text.trim();
+
+    // Auto prepend +91 (India) if user enters standard 10 digit number
+    if (!phone.startsWith('+')) {
+      if (phone.length == 10) {
+        phone = '+91$phone';
+      } else {
+        _snack('Please enter phone number with country code (e.g. +91...)');
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      final identifier = _isJobSeeker
-          ? _seekerContactController.text.trim()
-          : _companyEmailController.text.trim();
-
-      final result = await _apiService.sendOtp(
-        identifier,
-        intent: 'register',
-        role: _isJobSeeker ? 'job_seeker' : 'company',
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phone,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          if (mounted) {
+            setState(() => _isLoading = true);
+          }
+          try {
+            UserCredential userCredential = await _auth.signInWithCredential(credential);
+            String? idToken = await userCredential.user?.getIdToken();
+            if (idToken != null) {
+              await _registerToBackend(idToken);
+            }
+          } catch (e) {
+            if (mounted) {
+              setState(() => _isLoading = false);
+              _snack(e.toString());
+            }
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _snack(e.message ?? 'Verification failed.');
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+              _step = 1;
+              _isLoading = false;
+            });
+            _startResendTimer();
+            _snack('Verification code sent to $phone', err: false);
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            _verificationId = verificationId;
+          }
+        },
+        forceResendingToken: _resendToken,
       );
-
-      setState(() {
-        _isLoading = false;
-        _step = 1;
-      });
-
-      final mock = result['data'] is Map ? result['data']['mock_otp'] : null;
-
-      if (ApiService.demoMode) {
-        _otpController.text = ApiService.demoOtp;
-        _snack('Demo code: ${ApiService.demoOtp}', err: false);
-        Future.delayed(const Duration(milliseconds: 350), _verifyRegistration);
-      } else if (mock != null) {
-        _otpController.text = mock.toString();
-        _snack('Dev OTP: $mock', err: false);
-      } else {
-        _snack('Verification code sent.', err: false);
-      }
     } catch (e) {
-      setState(() => _isLoading = false);
-      _snack(ApiService.messageFromException(e));
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _snack(e.toString());
+      }
     }
   }
 
   Future<void> _verifyRegistration() async {
-    if (_otpController.text.length != 6) {
-      _snack('Enter the 6-digit code');
+    final smsCode = _otpController.text.trim();
+    if (smsCode.length != 6) {
+      _snack('Please enter the 6-digit verification code');
+      return;
+    }
+    if (_verificationId == null) {
+      _snack('Session expired. Please request OTP again.');
       return;
     }
 
@@ -1074,17 +1159,34 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     setState(() => _isLoading = true);
 
     try {
-      final identifier = _isJobSeeker
-          ? _seekerContactController.text.trim()
-          : _companyEmailController.text.trim();
-      final referralCode =
-          referralRaw.isEmpty ? null : referralRaw;
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: smsCode,
+      );
 
+      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      String? idToken = await userCredential.user?.getIdToken();
+      if (idToken != null) {
+        await _registerToBackend(idToken);
+      } else {
+        throw Exception('Failed to retrieve ID token from Firebase');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _snack(e is FirebaseAuthException ? (e.message ?? e.toString()) : e.toString());
+      }
+    }
+  }
+
+  Future<void> _registerToBackend(String idToken) async {
+    final referralRaw = _referralCodeController.text.trim();
+    final referralCode = referralRaw.isEmpty ? null : referralRaw;
+
+    try {
       if (_isJobSeeker) {
-        await _apiService.verifyOtp(
-          identifier,
-          _otpController.text.trim(),
-          intent: 'register',
+        await _apiService.authenticateWithFirebaseToken(
+          idToken: idToken,
           role: 'job_seeker',
           name: _seekerNameController.text.trim(),
           state: _seekerState,
@@ -1095,10 +1197,8 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
           referralCode: referralCode,
         );
       } else {
-        await _apiService.verifyOtp(
-          identifier,
-          _otpController.text.trim(),
-          intent: 'register',
+        await _apiService.authenticateWithFirebaseToken(
+          idToken: idToken,
           role: 'company',
           name: _adminNameController.text.trim(),
           companyName: _companyNameController.text.trim(),
@@ -1114,13 +1214,16 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         );
       }
 
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _step = 2;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
-      _snack(ApiService.messageFromException(e));
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _snack(ApiService.messageFromException(e));
+      }
     }
   }
 

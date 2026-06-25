@@ -11,6 +11,7 @@ import '../../constants/industry_types.dart';
 import '../../constants/employer_status_labels.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/banner_carousel.dart';
+import '../../widgets/notification_bell.dart';
 import '../../config/useresume_config.dart';
 import 'post_job_screen.dart';
 
@@ -201,12 +202,11 @@ class EmployerDashboardPageState extends State<EmployerDashboardPage> {
                                   ),
                                   const Spacer(),
                                   Container(
-                                    padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
                                       color: AppColors.background,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: const Icon(Icons.notifications_none_outlined, size: 20),
+                                    child: const NotificationBell(iconColor: AppColors.primary),
                                   ),
                                 ],
                               ),

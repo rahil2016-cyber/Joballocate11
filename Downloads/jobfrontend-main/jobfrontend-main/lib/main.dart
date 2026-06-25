@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'config/api_config.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'firebase_bootstrap.dart';
 import 'screens/auth/job_seeker_otp_login.dart';
 import 'screens/auth/employer_otp_login.dart';
 import 'screens/auth/register_screen.dart';
-import 'screens/splash_screen.dart';
+import 'screens/employer/employer_home.dart';
+import 'screens/job_seeker/job_seeker_home.dart';
 import 'services/app_session.dart';
+import 'services/fcm_flutter_service.dart';
 import 'navigation/app_navigator.dart';
 import 'utils/app_colors.dart';
 import 'utils/app_theme.dart';
@@ -18,22 +25,78 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.initialize();
   await AppSession.loadFromStorage();
-  await tryInitializeFirebase();
+  
+  // Global Flutter error handler
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    if (Firebase.apps.isNotEmpty) {
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    }
+  };
+
+  // Global platform error handler (async/native errors)
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    if (Firebase.apps.isNotEmpty) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    }
+    return true;
+  };
+  
+  // Launch the app immediately!
   runApp(const ProviderScope(child: JobAllocateApp()));
+  
+  // Initialize Firebase and FCM in the background so it doesn't delay the splash screen / app launch
+  Future.microtask(() async {
+    await tryInitializeFirebase();
+    await FcmFlutterService.instance.initialize();
+  });
 }
 
-class JobAllocateApp extends StatelessWidget {
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+class JobAllocateApp extends StatefulWidget {
   const JobAllocateApp({super.key});
+
+  @override
+  State<JobAllocateApp> createState() => _JobAllocateAppState();
+}
+
+class _JobAllocateAppState extends State<JobAllocateApp> {
+  @override
+  void initState() {
+    super.initState();
+    NotificationEvents.addListener(_onPushNotification);
+  }
+
+  @override
+  void dispose() {
+    NotificationEvents.removeListener(_onPushNotification);
+    super.dispose();
+  }
+
+  void _onPushNotification(RemoteMessage message) {
+    // We now rely on flutter_local_notifications to show a heads-up notification.
+    // If you need custom in-app handling (like a badge refresh), handle it here.
+  }
+
+  Widget _getInitialScreen() {
+    if (!AppSession.isLoggedIn) return const RoleSelectionScreen();
+    final role = AppSession.user?['role']?.toString().trim();
+    if (role == 'company') return EmployerHomeScreen(token: AppSession.token);
+    if (role == 'job_seeker') return JobSeekerHomeScreen(userId: AppSession.userId, token: AppSession.token);
+    return const RoleSelectionScreen();
+  }
 
   @override
   Widget build(BuildContext context) {
     return JobDeepLinkListener(
       child: MaterialApp(
         navigatorKey: rootNavigatorKey,
+        scaffoldMessengerKey: rootScaffoldMessengerKey,
         title: 'JobAllocate',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
-        home: const SplashScreen(fallbackScreen: RoleSelectionScreen()),
+        home: _getInitialScreen(),
       ),
     );
   }
@@ -51,7 +114,7 @@ class RoleSelectionScreen extends StatelessWidget {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF4F7FA), Colors.white],
+            colors: [Color(0xFFF8FAFC), Colors.white],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -59,91 +122,96 @@ class RoleSelectionScreen extends StatelessWidget {
         child: SafeArea(
           child: SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Logo Card containing logo and vector tagline
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: Colors.black.withOpacity(0.02),
+                          blurRadius: 15,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const AppLogo(height: 52),
-                        const SizedBox(height: 12),
+                        const AppLogo(height: 56),
+                        const SizedBox(height: 14),
                         // Premium vector tagline matching the brand logo design
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 2,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE53E3E), // Brand Red
-                                borderRadius: BorderRadius.circular(1),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 28,
+                                height: 2,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE53E3E), // Brand Red
+                                  borderRadius: BorderRadius.circular(1),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'RIGHT JOB, RIGHT CANDIDATE',
-                              style: TextStyle(
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.1,
-                                color: Color(0xFF1E293B), // Dark slate
+                              const SizedBox(width: 8),
+                              Text(
+                                'RIGHT JOB, RIGHT CANDIDATE',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
+                                  color: const Color(0xFF1E293B), // Dark slate
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              width: 32,
-                              height: 2,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF174A7E), // Brand Blue
-                                borderRadius: BorderRadius.circular(1),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 28,
+                                height: 2,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF174A7E), // Brand Blue
+                                  borderRadius: BorderRadius.circular(1),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 40),
 
                   // Handshake Illustration - sized responsively to prevent overlap
                   Image.asset(
                     'assets/images/handshake_illustration.png',
-                    height: screenSize.height > 700 ? 180 : 130,
+                    height: screenSize.height > 700 ? 190 : 140,
                     fit: BoxFit.contain,
                     errorBuilder: (ctx, err, stack) => Icon(
                       Icons.handshake_rounded,
-                      size: screenSize.height > 700 ? 100 : 80,
-                      color: const Color(0xFF174A7E).withOpacity(0.5),
+                      size: screenSize.height > 700 ? 110 : 90,
+                      color: const Color(0xFF174A7E).withOpacity(0.4),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 40),
 
                   // Actions Area
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
-                          blurRadius: 15,
-                          offset: const Offset(0, 6),
+                          color: Colors.black.withOpacity(0.02),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
@@ -159,22 +227,25 @@ class RoleSelectionScreen extends StatelessWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF174A7E),
                             foregroundColor: Colors.white,
-                            elevation: 2,
-                            shadowColor: const Color(0xFF174A7E).withOpacity(0.4),
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
                                 'I\'m a Job Seeker',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.3,
+                                ),
                               ),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward_rounded, size: 20),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.arrow_forward_rounded, size: 20),
                             ],
                           ),
                         ),
@@ -192,35 +263,44 @@ class RoleSelectionScreen extends StatelessWidget {
                             ),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
                                 'I\'m an Employer',
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF174A7E), letterSpacing: 0.5),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF174A7E),
+                                  letterSpacing: 0.3,
+                                ),
                               ),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward_rounded, size: 20, color: Color(0xFF174A7E)),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.arrow_forward_rounded, size: 20, color: Color(0xFF174A7E)),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 24),
 
                         // Divider
                         Row(
                           children: [
-                            Expanded(child: Divider(color: Colors.grey.shade200, thickness: 1)),
+                            Expanded(child: Divider(color: Colors.grey.shade100, thickness: 1)),
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               child: Text(
                                 'or continue with',
-                                style: TextStyle(color: Colors.grey.shade500, fontSize: 13, fontWeight: FontWeight.w500),
+                                style: GoogleFonts.plusJakartaSans(
+                                  color: Colors.grey.shade400,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                            Expanded(child: Divider(color: Colors.grey.shade200, thickness: 1)),
+                            Expanded(child: Divider(color: Colors.grey.shade100, thickness: 1)),
                           ],
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 24),
 
                         // Button: Continue with Google
                         OutlinedButton(
@@ -230,7 +310,8 @@ class RoleSelectionScreen extends StatelessWidget {
                             );
                           },
                           style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.grey.shade300, width: 1),
+                            backgroundColor: const Color(0xFFF8FAFC),
+                            side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
@@ -246,20 +327,28 @@ class RoleSelectionScreen extends StatelessWidget {
                                 errorBuilder: (ctx, err, stack) => const Icon(Icons.g_mobiledata_rounded, size: 24),
                               ),
                               const SizedBox(width: 12),
-                              const Text(
+                              Text(
                                 'Continue with Google',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF334155),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 24),
 
                         // Footer
                         Center(
                           child: Text(
                             'By continuing, you agree to our Terms & Conditions',
-                            style: TextStyle(color: Colors.grey.shade400, fontSize: 11, fontWeight: FontWeight.w500),
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.grey.shade400,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],

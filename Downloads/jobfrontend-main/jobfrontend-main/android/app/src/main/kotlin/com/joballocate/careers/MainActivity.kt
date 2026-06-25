@@ -1,4 +1,4 @@
-package com.example.joballocate
+package com.joballocate.careers
 
 import io.flutter.embedding.android.FlutterActivity
 

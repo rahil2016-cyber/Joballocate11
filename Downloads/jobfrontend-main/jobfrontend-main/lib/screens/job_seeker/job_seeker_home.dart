@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../constants/industry_types.dart';
+import '../../constants/industry_roles_skills.dart';
 import '../../models/job.dart';
 import '../../models/top_company.dart';
 import '../../models/banner.dart' as banner_model;
@@ -42,6 +44,7 @@ import '../../widgets/popular_categories_section.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import '../../services/refer_earn_api_service.dart';
+import '../../widgets/notification_bell.dart';
 
 import './career_prep/feedback_rate_screen.dart';
 import '../common/about_screen.dart';
@@ -560,21 +563,47 @@ class _JobFeedPageState extends State<_JobFeedPage> with AutomaticKeepAliveClien
       _isLoading = true;
       _loadErrorCause = null;
     });
+    
+    // Start background requests that are not critical for the first paint
+    final bannersFuture = _fetchBanners();
+    final recommendedFuture = _fetchRecommendedJobs();
+    final profilePctFuture = _fetchProfileCompletionPercent();
+    final topCompaniesFuture = _fetchTopCompanies();
+    final spotlightJobsFuture = _fetchSpotlightEmployerJobs();
+    final freshFuture = _fetchFreshJobs();
+    final relatedFuture = _fetchRelatedJobs();
+
     try {
-      final bannersFuture = _fetchBanners();
-      final recommendedFuture = _fetchRecommendedJobs();
-      final profilePctFuture = _fetchProfileCompletionPercent();
-      final topCompaniesFuture = _fetchTopCompanies();
-      final spotlightJobsFuture = _fetchSpotlightEmployerJobs();
-      final freshFuture = _fetchFreshJobs();
-      final relatedFuture = _fetchRelatedJobs();
       final list = await JobSeekerApiService.instance.listJobs(
-        search: _searchController.text.trim().isEmpty
-            ? null
-            : _searchController.text.trim(),
+        search: _searchController.text.trim().isEmpty ? null : _searchController.text.trim(),
         industryType: _industryFilter,
         perPage: 50,
       );
+      if (!mounted) return;
+      
+      // Update state immediately so the user can see jobs without waiting for 7 other endpoints!
+      setState(() {
+        _jobs = list;
+        _isLoading = false;
+      });
+      await _refreshAppliedIds();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadErrorCause = e;
+        _jobs = [];
+        _isLoading = false;
+      });
+      if (NetworkUserMessage.looksLikeNetwork(e)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          showNetworkIssueAlert(context, error: e, onRetry: _loadJobs);
+        });
+      }
+    }
+
+    // Now await the background requests and update state smoothly
+    try {
       final banners = await bannersFuture;
       final recommended = await recommendedFuture;
       final profilePct = await profilePctFuture;
@@ -584,34 +613,16 @@ class _JobFeedPageState extends State<_JobFeedPage> with AutomaticKeepAliveClien
       final related = await relatedFuture;
       if (!mounted) return;
       setState(() {
-        _jobs = list;
         _banners = banners;
         _recommendedJobs = recommended;
+        _profileCompletionPercent = profilePct;
         _topCompanies = topCompanies;
         _spotlightEmployerJobs = spotlightJobs;
         _freshJobs = fresh;
         _relatedJobs = related;
-        _profileCompletionPercent = profilePct;
-        _isLoading = false;
       });
-      await _refreshAppliedIds();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadErrorCause = e;
-        _jobs = [];
-        _topCompanies = [];
-        _spotlightEmployerJobs = [];
-        _freshJobs = [];
-        _relatedJobs = [];
-        _isLoading = false;
-      });
-      if (NetworkUserMessage.looksLikeNetwork(e)) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          showNetworkIssueAlert(context, error: e, onRetry: _loadJobs);
-        });
-      }
+    } catch (_) {
+      // It's okay if background fetches fail occasionally
     }
   }
 
@@ -676,21 +687,13 @@ class _JobFeedPageState extends State<_JobFeedPage> with AutomaticKeepAliveClien
                           ),
                           const Spacer(),
                           IconButton(
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
                             onPressed: () => _showSearchSheet(context),
-                            icon: const Icon(Icons.search),
+                            icon: const Icon(Icons.search, size: 26),
                           ),
-                          IconButton(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Notifications — coming soon!'),
-                                  behavior: SnackBarBehavior.floating,
-                                  margin: EdgeInsets.all(16),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.notifications_none_outlined),
-                          ),
+                          const SizedBox(width: 8),
+                          const NotificationBell(iconColor: AppColors.textPrimary),
                         ],
                       ),
                     ],
@@ -833,9 +836,11 @@ class _JobFeedPageState extends State<_JobFeedPage> with AutomaticKeepAliveClien
         ],
       ),
       if (_isLoading && _jobs.isEmpty)
-        Container(
-          color: AppColors.background,
-          child: const Center(
+        const Positioned(
+          top: 180, // Allow the top header "Hello User" to show instantly!
+          left: 0,
+          right: 0,
+          child: Center(
             child: CircularProgressIndicator(color: AppColors.primary),
           ),
         ),
@@ -1165,6 +1170,35 @@ class _SearchBottomSheetState extends State<_SearchBottomSheet> {
   final _queryController = TextEditingController();
   final _locationController = TextEditingController();
   String _type = 'Jobs';
+  
+  late final List<String> _roleOptions;
+  late final List<String> _locationOptions;
+
+  @override
+  void initState() {
+    super.initState();
+    final Set<String> roles = {};
+    for (var ind in kIndustryTypes) {
+      roles.add(ind.label);
+    }
+    for (var industry in kAllRolesAndSkillsByIndustry.values) {
+      roles.addAll(industry.keys);
+    }
+    _roleOptions = roles.toList()..sort();
+    
+    _locationOptions = [
+      'Ahmedabad', 'Agra', 'Allahabad', 'Amritsar', 'Aurangabad',
+      'Bengaluru', 'Bhopal', 'Chennai', 'Chandigarh', 'Coimbatore',
+      'Delhi', 'Dhanbad', 'Faridabad', 'Ghaziabad', 'Guwahati',
+      'Gwalior', 'Howrah', 'Hubli-Dharwad', 'Hyderabad', 'Indore',
+      'Jabalpur', 'Jaipur', 'Jodhpur', 'Kalyan-Dombivli', 'Kanpur',
+      'Kolkata', 'Kota', 'Lucknow', 'Ludhiana', 'Madurai', 'Meerut',
+      'Mumbai', 'Nagpur', 'Nashik', 'Navi Mumbai', 'Patna',
+      'Pimpri-Chinchwad', 'Pune', 'Raipur', 'Rajkot', 'Ranchi',
+      'Solapur', 'Srinagar', 'Surat', 'Thane', 'Vadodara',
+      'Varanasi', 'Vasai-Virar', 'Vijayawada', 'Visakhapatnam',
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1217,14 +1251,16 @@ class _SearchBottomSheetState extends State<_SearchBottomSheet> {
                   ],
                 ),
                 const SizedBox(height: 32),
-                _buildField(
+                _buildAutocompleteField(
                   controller: _queryController,
                   hint: 'Designation, skill and company',
+                  options: _roleOptions,
                 ),
                 const SizedBox(height: 16),
-                _buildField(
+                _buildAutocompleteField(
                   controller: _locationController,
                   hint: 'Location',
+                  options: _locationOptions,
                 ),
                 const SizedBox(height: 32),
                 SizedBox(
@@ -1296,7 +1332,11 @@ class _SearchBottomSheetState extends State<_SearchBottomSheet> {
     );
   }
 
-  Widget _buildField({required TextEditingController controller, required String hint}) {
+  Widget _buildAutocompleteField({
+    required TextEditingController controller,
+    required String hint,
+    required List<String> options,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1304,14 +1344,74 @@ class _SearchBottomSheetState extends State<_SearchBottomSheet> {
         border: Border.all(color: Colors.grey[200]!),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: TextField(
-        controller: controller,
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 16),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 15),
-          border: InputBorder.none,
-        ),
+      child: Autocomplete<String>(
+        optionsBuilder: (TextEditingValue textEditingValue) {
+          if (textEditingValue.text.isEmpty) {
+            return const Iterable<String>.empty();
+          }
+          final q = textEditingValue.text.toLowerCase();
+          return options.where((String option) {
+            return option.toLowerCase().contains(q);
+          });
+        },
+        onSelected: (String selection) {
+          controller.text = selection;
+        },
+        fieldViewBuilder: (BuildContext context, TextEditingController fieldTextEditingController, FocusNode fieldFocusNode, VoidCallback onFieldSubmitted) {
+          // Sync with our master controller if needed
+          fieldTextEditingController.addListener(() {
+            controller.text = fieldTextEditingController.text;
+          });
+          return TextField(
+            controller: fieldTextEditingController,
+            focusNode: fieldFocusNode,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 16),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 15),
+              border: InputBorder.none,
+            ),
+            onSubmitted: (String value) {
+              onFieldSubmitted();
+            },
+          );
+        },
+        optionsViewBuilder: (BuildContext context, AutocompleteOnSelected<String> onSelected, Iterable<String> options) {
+          return Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 4.0,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                height: 220.0,
+                width: MediaQuery.of(context).size.width - 48,
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: options.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final String option = options.elementAt(index);
+                    return InkWell(
+                      onTap: () {
+                        onSelected(option);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border(bottom: BorderSide(color: Colors.grey[100]!)),
+                        ),
+                        child: Text(
+                          option, 
+                          style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

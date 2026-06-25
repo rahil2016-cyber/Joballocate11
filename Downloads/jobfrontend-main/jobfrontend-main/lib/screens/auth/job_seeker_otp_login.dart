@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/api_service.dart';
-import '../../services/job_seeker_api_service.dart';
 import '../../services/app_session.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/otp_input_field.dart';
 import '../../utils/app_colors.dart';
 import '../job_seeker/job_seeker_home.dart';
-import '../job_seeker/job_seeker_onboarding_screen.dart';
 import '../../widgets/app_logo.dart';
 import '../../widgets/brand_dream_job_tagline.dart';
 import 'register_screen.dart';
@@ -19,282 +20,169 @@ class JobSeekerOtpLoginScreen extends StatefulWidget {
 }
 
 class _JobSeekerOtpLoginScreenState extends State<JobSeekerOtpLoginScreen> {
-  final TextEditingController _contactController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  bool _isPhone = true;
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
+  
   bool _isLoading = false;
-
+  bool _codeSent = false;
+  String? _verificationId;
+  int? _resendToken;
+  
+  int _secondsRemaining = 60;
+  Timer? _timer;
+  
   final ApiService _apiService = ApiService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 20),
-              
-              // Logo and app name
-              const Row(
-                children: [
-                   AppLogo(),
-                ],
-              ),
-              const SizedBox(height: 16),
-              BrandDreamJobTagline(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                textAlign: TextAlign.start,
-                headlineStyle: textTheme.titleSmall?.copyWith(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-                taglineStyle: textTheme.titleSmall?.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.2,
-                ),
-                spacing: 6,
-              ),
-              const SizedBox(height: 24),
-              
-              // Header
-              Text(
-                'Welcome Back!',
-                style: textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Login to explore thousands of jobs tailored just for you.',
-                style: textTheme.bodyLarge?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              
-              const SizedBox(height: 48),
-
-              // Contact Method Toggle (Custom)
-              Container(
-                height: 56,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildToggleItem(
-                        title: 'Phone',
-                        isSelected: _isPhone,
-                        onTap: () {
-                          FocusScope.of(context).unfocus();
-                          setState(() => _isPhone = true);
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: _buildToggleItem(
-                        title: 'Email',
-                        isSelected: !_isPhone,
-                        onTap: () {
-                          FocusScope.of(context).unfocus();
-                          setState(() => _isPhone = false);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Input Field
-              Text(
-                _isPhone ? 'Phone Number' : 'Email Address',
-                style: textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: ValueKey(_isPhone ? 'phone' : 'email'),
-                controller: _contactController,
-                keyboardType: _isPhone ? TextInputType.phone : TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: _isPhone ? '+91 98765 43210' : 'name@example.com',
-                  prefixIcon: Icon(
-                    _isPhone ? Icons.phone_iphone_rounded : Icons.alternate_email_rounded,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Password Field
-              Text(
-                'Password',
-                style: textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  hintText: 'Enter your password',
-                  prefixIcon: const Icon(
-                    Icons.lock_outline_rounded,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              CustomButton(
-                text: 'Log in',
-                onPressed: _login,
-                isLoading: _isLoading,
-              ),
-
-              const SizedBox(height: 28),
-              Center(
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 4,
-                  children: [
-                    Text(
-                      'New to JobAllocate? ',
-                      style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                        );
-                      },
-                      child: const Text(
-                        'Create account',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 40),
-            ],
-          ),
-        ),
-      ),
-    );
+  void _startResendTimer() {
+    _secondsRemaining = 60;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
+        } else {
+          _timer?.cancel();
+        }
+      });
+    });
   }
 
-  Widget _buildToggleItem({
-    required String title,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.surface : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? AppColors.primary : AppColors.textSecondary,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            fontSize: 15,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _login() async {
-    final raw = _contactController.text.trim();
-    final password = _passwordController.text;
-
-    if (raw.isEmpty) {
-      _showSnackBar('Please enter your contact information');
+  Future<void> _sendOtp() async {
+    String phone = _phoneController.text.trim();
+    if (phone.isEmpty) {
+      _showSnackBar('Please enter your phone number');
       return;
     }
-    if (!_isPhone) {
-      final email = raw.toLowerCase();
-      if (!email.contains('@') || !email.contains('.')) {
-        _showSnackBar('Please enter a valid email address');
+
+    // Auto prepend +91 (India) if user enters standard 10 digit number
+    if (!phone.startsWith('+')) {
+      if (phone.length == 10) {
+        phone = '+91$phone';
+      } else {
+        _showSnackBar('Please enter phone number with country code (e.g. +91...)');
         return;
       }
     }
-    if (password.isEmpty) {
-      _showSnackBar('Please enter your password');
+
+    setState(() => _isLoading = true);
+
+    try {
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phone,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          // Auto retrieval succeeded
+          if (mounted) {
+            setState(() => _isLoading = true);
+          }
+          try {
+            UserCredential userCredential = await _auth.signInWithCredential(credential);
+            String? idToken = await userCredential.user?.getIdToken();
+            if (idToken != null) {
+              await _loginToBackend(idToken);
+            }
+          } catch (e) {
+            if (mounted) {
+              setState(() => _isLoading = false);
+              _showSnackBar(e.toString());
+            }
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showSnackBar(e.message ?? 'Verification failed.');
+          }
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          if (mounted) {
+            setState(() {
+              _verificationId = verificationId;
+              _resendToken = resendToken;
+              _codeSent = true;
+              _isLoading = false;
+            });
+            _startResendTimer();
+            _showSnackBar('Verification code sent to $phone', isError: false);
+          }
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            _verificationId = verificationId;
+          }
+        },
+        forceResendingToken: _resendToken,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnackBar(e.toString());
+      }
+    }
+  }
+
+  Future<void> _verifyCode() async {
+    final smsCode = _otpController.text.trim();
+    if (smsCode.length != 6) {
+      _showSnackBar('Please enter the 6-digit verification code');
+      return;
+    }
+    if (_verificationId == null) {
+      _showSnackBar('Session expired. Please request OTP again.');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      await _apiService.loginWithPassword(
-        identifier: raw,
-        password: password,
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: smsCode,
+      );
+
+      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      String? idToken = await userCredential.user?.getIdToken();
+      if (idToken != null) {
+        await _loginToBackend(idToken);
+      } else {
+        throw Exception('Failed to retrieve ID token from Firebase');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnackBar(e is FirebaseAuthException ? (e.message ?? e.toString()) : e.toString());
+      }
+    }
+  }
+
+  Future<void> _loginToBackend(String idToken) async {
+    try {
+      await _apiService.authenticateWithFirebaseToken(
+        idToken: idToken,
         role: 'job_seeker',
       );
 
+      if (!mounted) return;
       setState(() => _isLoading = false);
 
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            settings: const RouteSettings(name: JobSeekerHomeScreen.routeName),
-            pageBuilder: (context, animation, secondaryAnimation) => JobSeekerHomeScreen(
-              userId: AppSession.userId,
-              token: AppSession.token,
-            ),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          settings: const RouteSettings(name: JobSeekerHomeScreen.routeName),
+          pageBuilder: (context, animation, secondaryAnimation) => JobSeekerHomeScreen(
+            userId: AppSession.userId,
+            token: AppSession.token,
           ),
-        );
-      }
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
     } catch (e) {
-      setState(() => _isLoading = false);
-      _showSnackBar(ApiService.messageFromException(e));
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSnackBar(ApiService.messageFromException(e));
+      }
     }
   }
 
@@ -311,9 +199,177 @@ class _JobSeekerOtpLoginScreenState extends State<JobSeekerOtpLoginScreen> {
   }
 
   @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary),
+          onPressed: () {
+            if (_codeSent) {
+              setState(() {
+                _codeSent = false;
+                _otpController.clear();
+              });
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              const Row(
+                children: [
+                   AppLogo(height: 28),
+                ],
+              ),
+              const SizedBox(height: 8),
+              BrandDreamJobTagline(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                textAlign: TextAlign.start,
+                headlineStyle: textTheme.titleSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
+                taglineStyle: textTheme.titleSmall?.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                ),
+                spacing: 4,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _codeSent ? 'Verify Code' : 'Welcome Back!',
+                style: textTheme.displaySmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _codeSent
+                    ? 'Enter the 6-digit code we sent to your phone number.'
+                    : 'Login using secure Firebase Phone OTP verification.',
+                style: textTheme.bodyLarge?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              if (!_codeSent) ...[
+                Text(
+                  'Phone Number',
+                  style: textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    hintText: '+91 98765 43210',
+                    prefixIcon: Icon(
+                      Icons.phone_iphone_rounded,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                CustomButton(
+                  text: 'Send Verification Code',
+                  onPressed: _sendOtp,
+                  isLoading: _isLoading,
+                ),
+              ] else ...[
+                Text(
+                  'Verification Code',
+                  style: textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: OtpInputField(
+                    controller: _otpController,
+                    onCompleted: (_) => _verifyCode(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                CustomButton(
+                  text: 'Verify & Login',
+                  onPressed: _verifyCode,
+                  isLoading: _isLoading,
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: _secondsRemaining > 0
+                      ? Text(
+                          'Resend code in $_secondsRemaining seconds',
+                          style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                        )
+                      : TextButton(
+                          onPressed: _isLoading ? null : _sendOtp,
+                          child: const Text(
+                            'Resend Code',
+                            style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary),
+                          ),
+                        ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+              if (!_codeSent)
+                Center(
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
+                    children: [
+                      Text(
+                        'New to JobAllocate? ',
+                        style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                          );
+                        },
+                        child: const Text(
+                          'Create account',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   void dispose() {
-    _contactController.dispose();
-    _passwordController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 }

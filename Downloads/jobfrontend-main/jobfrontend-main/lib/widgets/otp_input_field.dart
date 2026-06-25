@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 
 class OtpInputField extends StatefulWidget {
@@ -46,73 +47,91 @@ class _OtpInputFieldState extends State<OtpInputField> {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    // Avoid horizontal overflow on narrow devices (padding + 6 boxes).
-    final boxW = w < 360 ? 40.0 : 46.0;
-    final gap = w < 360 ? 3.0 : 5.0;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(widget.length, (index) {
-        return Container(
-          width: boxW,
-          height: 52,
-          margin: EdgeInsets.symmetric(horizontal: gap),
-          child: TextField(
-            controller: _controllers[index],
-            focusNode: _focusNodes[index],
-            textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              LengthLimitingTextInputFormatter(1),
-              FilteringTextInputFormatter.digitsOnly,
-            ],
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: _controllers[index].text.isNotEmpty
-                  ? AppColors.primaryLight
-                  : AppColors.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: _controllers[index].text.isNotEmpty
-                      ? AppColors.primary
-                      : const Color(0xFFE2E8F0),
-                  width: 1.5,
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalGaps = widget.length * 2;
+        final double gap = constraints.maxWidth < 360 ? 3.0 : 4.0;
+        final double maxBoxW = (constraints.maxWidth - (totalGaps * gap)) / widget.length;
+        final double boxW = maxBoxW > 48.0 ? 48.0 : maxBoxW;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(widget.length, (index) {
+            final hasText = _controllers[index].text.isNotEmpty;
+            return Container(
+              width: boxW,
+              height: 54,
+              margin: EdgeInsets.symmetric(horizontal: gap),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: hasText
+                    ? [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: _controllers[index].text.isNotEmpty
-                      ? AppColors.primary
-                      : const Color(0xFFE2E8F0),
-                  width: 1.5,
+              child: TextField(
+                controller: _controllers[index],
+                focusNode: _focusNodes[index],
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(1),
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: hasText
+                      ? AppColors.primary.withOpacity(0.04)
+                      : AppColors.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: hasText
+                          ? AppColors.primary
+                          : const Color(0xFFF1F5F9),
+                      width: 1.5,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: hasText
+                          ? AppColors.primary
+                          : const Color(0xFFF1F5F9),
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 2,
+                    ),
+                  ),
+                  counterText: '',
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                   color: AppColors.primary,
-                  width: 2,
                 ),
+                onChanged: (value) {
+                  setState(() {});
+                  if (value.isEmpty && index > 0) {
+                    _focusNodes[index - 1].requestFocus();
+                  }
+                },
               ),
-              counterText: '',
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: AppColors.primary,
-            ),
-            onChanged: (value) {
-              setState(() {});
-              if (value.isEmpty && index > 0) {
-                _focusNodes[index - 1].requestFocus();
-              }
-            },
-          ),
+            );
+          }),
         );
-      }),
+      },
     );
   }
 

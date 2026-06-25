@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../utils/api_json_decode.dart';
@@ -17,10 +18,10 @@ Map<String, dynamic>? _asStringKeyMap(dynamic raw) {
 }
 
 class ApiService {
-  // When demoMode is true, network calls for OTP are bypassed and the
-  // hardcoded code below is always accepted. Set to false to use [ApiConfig.baseUrl]
-  // (Laravel on host: Android emulator uses 10.0.2.2:8000 — see [ApiConfig]).
-  static bool demoMode = false;
+  // When demoMode is true, network calls for OTP are bypassed.
+  // Gated with kDebugMode to ensure it is always disabled in production/release builds.
+  static bool get demoMode => kDebugMode && _demoModeEnabled;
+  static const bool _demoModeEnabled = false;
   static const String demoOtp = '123456';
 
   static String get baseUrl => ApiConfig.baseUrl;
@@ -38,40 +39,8 @@ class ApiService {
   Map<String, dynamic> _decodeBody(http.Response response) =>
       decodeApiJsonObject(response);
 
-  /// [role] must match Laravel: `job_seeker` or `company`.
-  /// [intent]: `login` or `register` (register needs [name] / [companyName] on verify).
-  Future<Map<String, dynamic>> sendOtp(
-    String identifier, {
-    required String intent,
-    required String role,
-  }) async {
-    if (demoMode) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      return {'success': true, 'message': 'Demo OTP sent', 'data': {'mock_otp': demoOtp}};
-    }
-
-    final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/auth/send-otp'),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-      body: jsonEncode({
-        'identifier': identifier,
-        'intent': intent,
-        'role': role,
-      }),
-    );
-
-    final json = _decodeBody(response);
-    if (response.statusCode == 200 && json['success'] == true) {
-      return json;
-    }
-    final msg = json['message']?.toString() ?? 'Failed to send OTP';
-    throw Exception(msg);
-  }
-
-  Future<Map<String, dynamic>> verifyOtp(
-    String identifier,
-    String otp, {
-    required String intent,
+  Future<Map<String, dynamic>> authenticateWithFirebaseToken({
+    required String idToken,
     required String role,
     String? name,
     String? companyName,
@@ -81,25 +50,11 @@ class ApiService {
     String? city,
     String? referralCode,
   }) async {
-    if (demoMode) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (otp == demoOtp) {
-        AppSession.setSession(
-          bearerToken: 'demo-token',
-          userPayload: {'id': 'demo-user', 'name': 'Demo User', 'role': role},
-        );
-        return {'success': true, 'data': {'token': 'demo-token', 'user': AppSession.user!}};
-      }
-      throw Exception('Invalid OTP');
-    }
-
     final response = await http.post(
-      Uri.parse('${ApiService.baseUrl}/auth/verify-otp'),
+      Uri.parse('${ApiService.baseUrl}/auth/firebase-authenticate'),
       headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
       body: jsonEncode({
-        'identifier': identifier,
-        'code': otp,
-        'intent': intent,
+        'id_token': idToken,
         'role': role,
         if (name != null && name.isNotEmpty) 'name': name,
         if (companyName != null && companyName.isNotEmpty) 'company_name': companyName,
@@ -114,15 +69,12 @@ class ApiService {
     );
 
     final json = _decodeBody(response);
-    if (response.statusCode == 200 && json['success'] == true) {
+    if ((response.statusCode == 200 || response.statusCode == 201) && json['success'] == true) {
       final data = _asStringKeyMap(json['data']);
       if (data != null) {
         final token = data['token']?.toString();
         final userMap = _asStringKeyMap(data['user']);
-        if (token != null &&
-            token.isNotEmpty &&
-            userMap != null) {
-          // Ensure role is present for splash → home routing after cold start.
+        if (token != null && token.isNotEmpty && userMap != null) {
           final existing = userMap['role']?.toString().trim();
           if (existing == null || existing.isEmpty) {
             userMap['role'] = role;
@@ -132,7 +84,7 @@ class ApiService {
       }
       return json;
     }
-    final msg = json['message']?.toString() ?? 'Invalid OTP';
+    final msg = json['message']?.toString() ?? 'Authentication Failed';
     throw Exception(msg);
   }
 
