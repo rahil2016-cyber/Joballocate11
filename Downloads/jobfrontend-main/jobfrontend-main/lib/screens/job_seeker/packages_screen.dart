@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../models/seeker_profile.dart';
 import '../../services/job_seeker_api_service.dart';
 import '../../utils/app_colors.dart';
@@ -18,13 +19,87 @@ class _JobSeekerPackagesScreenState extends State<JobSeekerPackagesScreen> {
   String? _error;
   List<Map<String, dynamic>> _catalog = [];
   SeekerProfileSummary? _profile;
+  Map<String, dynamic>? _rawProfile;
+  late Razorpay _razorpay;
+  String? _currentPendingOrderId;
   /// all | job_applications | resume | combo
   String _filter = 'all';
 
   @override
   void initState() {
     super.initState();
+    _razorpay = Razorpay();
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _razorpay.clear();
+    super.dispose();
+  }
+
+  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    if (_currentPendingOrderId == null) {
+      _showError('No pending order found to verify.');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      await JobSeekerApiService.instance.verifyRazorpaySignature(
+        orderId: _currentPendingOrderId!,
+        paymentId: response.paymentId ?? '',
+        signature: response.signature ?? '',
+      );
+
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      _showSuccess('Payment successful! Package activated.');
+      _load();
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading dialog
+      _showError('Failed to verify payment: $e');
+    } finally {
+      _currentPendingOrderId = null;
+    }
+  }
+
+  void _handlePaymentError(PaymentFailureResponse response) {
+    _currentPendingOrderId = null;
+    _showError('Payment failed: [${response.code}] ${response.message}');
+  }
+
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    _showError('External wallets not supported.');
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: AppColors.error,
+      ),
+    );
+  }
+
+  void _showSuccess(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: AppColors.success,
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -81,6 +156,7 @@ class _JobSeekerPackagesScreenState extends State<JobSeekerPackagesScreen> {
       if (!mounted) return;
       setState(() {
         _catalog = cat;
+        _rawProfile = prof;
         _profile = SeekerProfileSummary.fromJson(prof);
         _loading = false;
       });
@@ -125,7 +201,7 @@ class _JobSeekerPackagesScreenState extends State<JobSeekerPackagesScreen> {
         title: const Text('Confirm purchase'),
         content: Text(
           'Activate “$title” for ₹$price?\n\n'
-          'This is a demo — no real payment is processed.',
+          'This will initiate a payment with Razorpay.',
         ),
         actions: [
           TextButton(
@@ -140,7 +216,39 @@ class _JobSeekerPackagesScreenState extends State<JobSeekerPackagesScreen> {
       ),
     );
     if (go != true || !mounted) return;
-    await _select(key);
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final orderData = await JobSeekerApiService.instance.createRazorpayOrder(key);
+      final String orderId = orderData['order_id'];
+      final int amount = orderData['amount'];
+      final String keyId = orderData['key_id'] ?? '';
+
+      _currentPendingOrderId = orderId;
+
+      var options = {
+        'key': keyId,
+        'amount': amount,
+        'name': 'JobAllocate',
+        'description': title,
+        'order_id': orderId,
+        'prefill': {
+          'contact': _rawProfile?['phone']?.toString() ?? '',
+          'email': _rawProfile?['email']?.toString() ?? '',
+        },
+      };
+
+      _razorpay.open(options);
+    } catch (e) {
+      _showError('Failed to initiate payment: $e');
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _select(String packageKey) async {

@@ -373,6 +373,43 @@ class JobSeekerApiService {
     throw Exception('Invalid response');
   }
 
+  /// `POST /job-seeker/payments/create-order` — create a Razorpay order.
+  Future<Map<String, dynamic>> createRazorpayOrder(String packageKey) async {
+    final r = await http.post(
+      Uri.parse('$_base/job-seeker/payments/create-order'),
+      headers: _authHeaders,
+      body: jsonEncode({'package_key': packageKey}),
+    );
+    final json = _decode(r);
+    _ensureSuccess(json, r.statusCode);
+    final data = json['data'];
+    if (data is Map<String, dynamic>) return data;
+    throw Exception('Invalid response');
+  }
+
+  /// `POST /job-seeker/payments/verify-signature` — verify signature after payment.
+  Future<Map<String, dynamic>> verifyRazorpaySignature({
+    required String orderId,
+    required String paymentId,
+    required String signature,
+  }) async {
+    final r = await http.post(
+      Uri.parse('$_base/job-seeker/payments/verify-signature'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'razorpay_order_id': orderId,
+        'razorpay_payment_id': paymentId,
+        'razorpay_signature': signature,
+      }),
+    );
+    final json = _decode(r);
+    _ensureSuccess(json, r.statusCode);
+    final data = json['data'];
+    if (data is Map<String, dynamic>) return data;
+    // Verify response may contain the updated user profile
+    return {};
+  }
+
   /// `POST /job-seeker/resume/ai-assist` — OpenRouter improves one section (no credits).
   Future<String> resumeAiAssist({
     required String sectionName,
